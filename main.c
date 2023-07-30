@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <Imlib2.h>
 #include <stdlib.h>
+#include <time.h>
 
 typedef struct
 {
@@ -15,7 +16,7 @@ Paths;
 
 typedef struct
 {
-    SDL_Texture** texture;
+    Imlib_Image* texture;
     unsigned size;
 }
 Textures;
@@ -24,7 +25,6 @@ typedef struct View
 {
     int speed;
     Textures textures;
-    SDL_Rect* rect;
     struct View* next;
 }
 View;
@@ -32,10 +32,12 @@ View;
 typedef struct
 {
     Display* x11d;
-    SDL_Window* window;
-    SDL_Renderer* renderer;
+    Window root;
+    Pixmap pixmap;
+    Imlib_Context* render_context;
 }
 Video;
+
 
 static void Quit(const char* const message, ...)
 {
@@ -225,6 +227,44 @@ static View* Parse(int argc, char** argv, Video* video)
     return views;
 }
 
+// setRootAtoms function
+void setRootAtoms(Video* video) {
+    Atom atom_root, atom_eroot, type;
+    unsigned char *data_root, *data_eroot;
+    int format;
+    unsigned long length, after;
+
+    atom_root = XInternAtom(video->x11d, "_XROOTMAP_ID", True);
+    atom_eroot = XInternAtom(video->x11d, "ESETROOT_PMAP_ID", True);
+
+    // doing this to clean up after old background
+    if (atom_root != None && atom_eroot != None) {
+        XGetWindowProperty(video->x11d, video->root, atom_root, 0L, 1L, False,
+                           AnyPropertyType, &type, &format, &length, &after,
+                           &data_root);
+
+        if (type == XA_PIXMAP) {
+            XGetWindowProperty(video->x11d, video->root, atom_eroot, 0L, 1L, False,
+                               AnyPropertyType, &type, &format, &length, &after,
+                               &data_eroot);
+
+            if (data_root && data_eroot && type == XA_PIXMAP &&
+                *((Pixmap *)data_root) == *((Pixmap *)data_eroot))
+                XKillClient(video->x11d, *((Pixmap *)data_root));
+        }
+    }
+
+    atom_root = XInternAtom(video->x11d, "_XROOTPMAP_ID", False);
+    atom_eroot = XInternAtom(video->x11d, "ESETROOT_PMAP_ID", False);
+
+    // setting new background atoms
+    XChangeProperty(video->x11d, video->root, atom_root, XA_PIXMAP, 32,
+                    PropModeReplace, (unsigned char *)&video->pixmap, 1);
+    XChangeProperty(video->x11d, video->root, atom_eroot, XA_PIXMAP, 32,
+                    PropModeReplace, (unsigned char *)&video->pixmap, 1);
+}
+
+
 int main(int argc, char **argv)
 {
     Video video = Setup();
@@ -235,19 +275,17 @@ int main(int argc, char **argv)
     timeout.tv_nsec = 33000000;
 
     // Run the event loop until the window is closed
-    SDL_Event event;
-    while (SDL_WaitEvent(&event) && event.type != SDL_QUIT)
-    {
+    while (1) {
         for (View *view = views; view; view = view->next)
         {
-            const int index = SDL_GetTicks() / view->speed;
+            const int index = time(NULL) / view->speed;
             const int frame = index % view->textures.size;
             Imlib_Image current = view->textures.texture[frame];
             
             imlib_context_push(video.render_context);
             imlib_context_set_image(current);
             imlib_render_image_on_drawable(0, 0);
-            setRootAtoms(video.x11d, &video);
+            setRootAtoms(&video);
             XKillClient(video.x11d, AllTemporary);
             XSetCloseDownMode(video.x11d, RetainTemporary);
             XSetWindowBackgroundPixmap(video.x11d, video.root, video.pixmap);
