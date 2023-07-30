@@ -3,6 +3,7 @@
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
 #include <stdio.h>
+#include <Imlib2.h>
 #include <stdlib.h>
 
 typedef struct
@@ -99,7 +100,7 @@ static void Depopulate(Paths* self)
     free(self->path);
 }
 
-static Textures Cache(Paths* paths, SDL_Renderer* renderer)
+static Textures Cache(Paths* paths)
 {
     Textures self;
     self.size = paths->size;
@@ -107,11 +108,9 @@ static Textures Cache(Paths* paths, SDL_Renderer* renderer)
     for(unsigned i = 0; i < self.size; i++)
     {
         const char* const path = paths->path[i];
-        SDL_Surface* const surface = SDL_LoadBMP(path);
-        if(surface == NULL)
+        self.texture[i] = imlib_load_image(path);
+        if (self.texture[i] == NULL)
             Quit("File '%s' failed to open. %s\n", path, SDL_GetError());
-        self.texture[i] = SDL_CreateTextureFromSurface(renderer, surface);
-        SDL_FreeSurface(surface);
     }
     return self;
 }
@@ -231,6 +230,10 @@ int main(int argc, char **argv)
     Video video = Setup();
     View *views = Parse(argc, argv, &video);
 
+    struct timespec timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_nsec = 33000000;
+
     // Run the event loop until the window is closed
     SDL_Event event;
     while (SDL_WaitEvent(&event) && event.type != SDL_QUIT)
@@ -239,9 +242,22 @@ int main(int argc, char **argv)
         {
             const int index = SDL_GetTicks() / view->speed;
             const int frame = index % view->textures.size;
-            SDL_RenderCopy(video.renderer, view->textures.texture[frame], NULL, view->rect);
+            Imlib_Image current = view->textures.texture[frame];
+            
+            imlib_context_push(video.render_context);
+            imlib_context_set_image(current);
+            imlib_render_image_on_drawable(0, 0);
+            setRootAtoms(video.x11d, &video);
+            XKillClient(video.x11d, AllTemporary);
+            XSetCloseDownMode(video.x11d, RetainTemporary);
+            XSetWindowBackgroundPixmap(video.x11d, video.root, video.pixmap);
+            XClearWindow(video.x11d, video.root);
+            XFlush(video.x11d);
+            XSync(video.x11d, False);
+            imlib_context_pop();
         }
-        SDL_RenderPresent(video.renderer);
+        
+        nanosleep(&timeout, NULL);
     }
 
     Cleanup(views);
