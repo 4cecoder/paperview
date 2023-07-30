@@ -264,7 +264,6 @@ void setRootAtoms(Video* video) {
                     PropModeReplace, (unsigned char *)&video->pixmap, 1);
 }
 
-
 int main(int argc, char **argv)
 {
     Video video = Setup();
