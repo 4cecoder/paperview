@@ -1,9 +1,8 @@
-#include <SDL2/SDL.h>
 #include <dirent.h>
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
-#include <stdio.h>
 #include <Imlib2.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
@@ -37,7 +36,6 @@ typedef struct
     Imlib_Context* render_context;
 }
 Video;
-
 
 static void Quit(const char* const message, ...)
 {
@@ -301,3 +299,4 @@ int main(int argc, char **argv)
     Teardown(&video);
     return 0;
 }
+
