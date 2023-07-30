@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <stdarg.h>
+#include <string.h>
 
 typedef struct
 {
@@ -36,6 +38,7 @@ typedef struct
     Imlib_Context* render_context;
 }
 Video;
+
 
 static void Quit(const char* const message, ...)
 {
@@ -299,4 +302,3 @@ int main(int argc, char **argv)
     Teardown(&video);
     return 0;
 }
-
