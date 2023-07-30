@@ -1,7 +1,8 @@
 #include <SDL2/SDL.h>
 #include <X11/Xlib.h>
-#include <dirent.h>
-#include <stdarg.h>
+#include <X11/Xatom.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 typedef struct
 {
@@ -125,10 +126,26 @@ static Video Setup(void)
 {
     Video self;
     self.x11d = XOpenDisplay(NULL);
-    const Window x11w = RootWindow(self.x11d, DefaultScreen(self.x11d));
     SDL_Init(SDL_INIT_VIDEO);
-    self.window = SDL_CreateWindowFrom((void*) x11w);
+
+    // Create a new window that covers the whole screen
+    int screen = DefaultScreen(self.x11d);
+    Window x11w = XCreateSimpleWindow(self.x11d, RootWindow(self.x11d, screen), 0, 0,
+                                      DisplayWidth(self.x11d, screen), DisplayHeight(self.x11d, screen),
+                                      0, BlackPixel(self.x11d, screen), BlackPixel(self.x11d, screen));
+
+    // Set the window's type to _NET_WM_WINDOW_TYPE_DESKTOP
+    Atom type = XInternAtom(self.x11d, "_NET_WM_WINDOW_TYPE", False);
+    Atom value = XInternAtom(self.x11d, "_NET_WM_WINDOW_TYPE_DESKTOP", False);
+    XChangeProperty(self.x11d, x11w, type, XA_ATOM, 32, PropModeReplace, (unsigned char *)&value, 1);
+
+    // Map the window (make it visible)
+    XMapWindow(self.x11d, x11w);
+
+    // Create an SDL window from this X11 window
+    self.window = SDL_CreateWindowFrom((void *)x11w);
     self.renderer = SDL_CreateRenderer(self.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+
     return self;
 }
 
@@ -208,24 +225,25 @@ static View* Parse(int argc, char** argv, Video* video)
     return views;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     Video video = Setup();
-    View* views = Parse(argc, argv, &video);
-    for(int cycles = 0; /* true */; cycles++)
+    View *views = Parse(argc, argv, &video);
+
+    // Run the event loop until the window is closed
+    SDL_Event event;
+    while (SDL_WaitEvent(&event) && event.type != SDL_QUIT)
     {
-        for(View* view = views; view; view = view->next)
+        for (View *view = views; view; view = view->next)
         {
-            const int index = cycles / view->speed;
+            const int index = SDL_GetTicks() / view->speed;
             const int frame = index % view->textures.size;
             SDL_RenderCopy(video.renderer, view->textures.texture[frame], NULL, view->rect);
         }
         SDL_RenderPresent(video.renderer);
-        SDL_Event event;
-        SDL_PollEvent(&event);
-        if(event.type == SDL_QUIT)
-            break;
     }
+
     Cleanup(views);
     Teardown(&video);
+    return 0;
 }
